@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f3864">
+<meta name="description" content="Vistoria por estação do Prédio Sede da JFAP — P01–P09 e ViP, com fotos.">
+<title>Vistoria JFAP</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn" id="btnVoltar" aria-label="Voltar" hidden>
+    <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+  </button>
+  <div class="topbar-title">
+    <strong id="tituloTopo">Vistoria JFAP</strong>
+    <small id="subtituloTopo">Prédio Sede — Macapá/AP</small>
+  </div>
+  <span class="save-ind" id="saveInd" title="Salvamento automático">●</span>
+</header>
+
+<main id="view" tabindex="-1"></main>
+
+<nav class="bottomnav" aria-label="Navegação principal">
+  <a href="#/" data-tab="estacoes"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Estações</span></a>
+  <a href="#/resumo" data-tab="resumo"><svg viewBox="0 0 24 24"><path d="M5 20V10M12 20V4M19 20v-7"/></svg><span>Resumo</span></a>
+  <a href="#/fotos" data-tab="fotos"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Fotos</span></a>
+  <a href="#/exportar" data-tab="exportar"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Exportar</span></a>
+  <a href="#/mais" data-tab="mais"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>Mais</span></a>
+</nav>
+
+<!-- entradas de arquivo reutilizáveis: câmera e galeria -->
+<input type="file" id="inCamera" accept="image/*" capture="environment" hidden>
+<input type="file" id="inGaleria" accept="image/*" multiple hidden>
+<input type="file" id="inBackup" accept="application/json,.json" hidden>
+
+<div id="modal" class="modal" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="print" class="print-only"></div>
+
+<script src="js/data.js"></script>
+<script src="js/db.js"></script>
+<script src="js/calc.js"></script>
+<script src="js/fotos.js"></script>
+<script src="js/app.js"></script>
+<script src="js/export.js"></script>
+<script>
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+</script>
+</body>
+</html>
