@@ -49,9 +49,18 @@ Os dados ficam salvos **somente no dispositivo** (IndexedDB). Faça backups com 
 
 ## Equipe (até 4 vistoriadores) e envio para o Google Drive
 
-**Equipe.** Em *Mais → Configurações*, cada celular escolhe **Vistoriador 1, 2, 3 ou 4**. As fotos de cada um
-usam uma faixa própria de números (1: 001–499 · 2: 501–999 · 3: 1001–1499 · 4: 1501–1999), mantendo o
-padrão `JFAP_L<estação>_F<foto>` sem repetir números. As estações são divididas entre a equipe.
+**Equipe.** Em *Mais → Configurações*, cada celular escolhe seu vistoriador; o nome é preenchido
+automaticamente. As fotos de cada um usam uma faixa própria de números, mantendo o padrão
+`JFAP_L<estação>_F<foto>` sem repetir números. As estações são divididas entre a equipe.
+
+| Nº | Vistoriador | Fotos |
+|---|---|---|
+| 1 | Marco Antonio | 001–499 |
+| 2 | Anne | 501–999 |
+| 3 | Dennys | 1001–1499 |
+| 4 | Agnaldo | 1501–1999 |
+
+Para alterar a equipe, edite a lista `EQUIPE` em `app/js/app.js`.
 
 **Envio periódico.** O salvamento no aparelho é imediato (cada toque é gravado na hora). A cópia para o
 Google Drive é feita a cada **10 minutos** (configurável: 5, 10, 15, 30 min ou só manual), apenas do que

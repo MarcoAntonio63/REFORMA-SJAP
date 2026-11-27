@@ -1,5 +1,5 @@
 /* Service worker: mantém o aplicativo disponível sem internet (cache do app). */
-const VERSAO = 'vistoria-jfap-v3';
+const VERSAO = 'vistoria-jfap-v4';
 const ARQUIVOS = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest',
   'js/data.js', 'js/db.js', 'js/calc.js', 'js/fotos.js', 'js/app.js', 'js/export.js', 'js/nuvem.js',

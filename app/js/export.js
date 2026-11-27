@@ -487,7 +487,7 @@ const Export = (() => {
       cands.sort((a, b) => (b.s.upd || 0) - (a.s.upd || 0));
       est[e.num] = JSON.parse(JSON.stringify(cands[0].s));
       origem[e.num] = cands[0].m;
-      if (cands.length > 1) conflitos.push(`${String(e.num).padStart(2, '0')} (vistoriadores ${cands.map(c => c.m.vistoriador).join(', ')} — usada a versão mais recente, do ${cands[0].m.vistoriador})`);
+      if (cands.length > 1) conflitos.push(`${String(e.num).padStart(2, '0')} (${cands.map(c => A().nomeVistoriador(c.m.vistoriador)).join(', ')} — usada a versão mais recente, de ${A().nomeVistoriador(cands[0].m.vistoriador)})`);
     }
     // fotos: as de todos os vistoriadores (numeração por faixa não se repete); link do Drive quando houver
     const fotos = [];
@@ -517,7 +517,7 @@ const Export = (() => {
       await Nuvem.post({ acao: 'planilha', vistoriador: 'EQUIPE', nome: 'Vistoria_JFAP_CONSOLIDADA.xlsx', base64: b64 });
       salvo = ' Cópia salva em Vistoria JFAP / Consolidado.';
     } catch (err) { salvo = ' (não foi possível salvar a cópia no Drive: ' + err.message + ')'; }
-    const porV = membros.map(m => `V${m.vistoriador}: ${Object.values(origem).filter(o => o === m).length} estação(ões)`).join(' · ');
+    const porV = membros.map(m => `${A().nomeVistoriador(m.vistoriador)}: ${Object.values(origem).filter(o => o === m).length} estação(ões)`).join(' · ');
     return `Consolidado ✔ — ${nEst} estação(ões), ${fotos.length} foto(s). ${porV}.${conflitos.length ? ' Atenção, estações preenchidas por mais de um vistoriador: ' + conflitos.join('; ') + '.' : ''}${salvo}`;
   }
 

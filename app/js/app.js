@@ -87,6 +87,8 @@
   }
 
   /* faixa de numeração de fotos por vistoriador (equipe de até 4): 1–499, 501–999, 1001–1499, 1501–1999 */
+  const EQUIPE = ['Marco Antonio', 'Anne', 'Dennys', 'Agnaldo'];   // vistoriadores 1 a 4
+  const nomeVistoriador = n => EQUIPE[n - 1] ? `Vistoriador ${n} — ${EQUIPE[n - 1]}` : `Vistoriador ${n}`;
   const faixaVistoriador = () => { const n = +S.cfg.vistoriadorNum; return n ? { ini: (n - 1) * 500 + 1, fim: n * 500 - 1 } : null; };
 
   const fotosDe = (num, k) => S.fotos.filter(f => f.estacao === num && (k === undefined || f.chave === k)).sort((a, b) => a.num - b.num);
@@ -891,7 +893,7 @@
       <section class="card">
         <h3>Equipe</h3>
         <label>Este aparelho é do
-          <select data-cfg="vistoriadorNum"><option value="0">Vistoria individual (sem equipe)</option>${[1, 2, 3, 4].map(n => `<option value="${n}" ${+c.vistoriadorNum === n ? 'selected' : ''}>Vistoriador ${n} — fotos ${Fotos.pad((n - 1) * 500 + 1, 3)} a ${n * 500 - 1}</option>`).join('')}</select>
+          <select data-cfg="vistoriadorNum"><option value="0">Vistoria individual (sem equipe)</option>${[1, 2, 3, 4].map(n => `<option value="${n}" ${+c.vistoriadorNum === n ? 'selected' : ''}>${h(nomeVistoriador(n))} (fotos ${Fotos.pad((n - 1) * 500 + 1, 3)} a ${n * 500 - 1})</option>`).join('')}</select>
         </label>
         <label>Nome do vistoriador<input type="text" data-cfg="vistoriadorPadrao" value="${h(c.vistoriadorPadrao)}"></label>
         <label>Acompanhante padrão<input type="text" data-cfg="acompanhantePadrao" value="${h(c.acompanhantePadrao)}"></label>
@@ -943,6 +945,8 @@
       if (k === 'vistoriadorNum' && c[k]) {
         const f = faixaVistoriador();
         if (c.proxFoto < f.ini || c.proxFoto > f.fim) c.proxFoto = f.ini;
+        // nome do vistoriador acompanha a escolha (sem apagar um nome digitado à mão)
+        if (!c.vistoriadorPadrao || EQUIPE.includes(c.vistoriadorPadrao)) c.vistoriadorPadrao = EQUIPE[c[k] - 1] || c.vistoriadorPadrao;
       }
       await salvarCfg(); Nuvem.atualizarIndicador(); toast('Configuração salva');
       if (k === 'vistoriadorNum') telaConfig();
@@ -1073,7 +1077,7 @@
   }
 
   // API para o módulo de exportação
-  window.App = { S, st, porNum, EST, D, fotosDe, faixaFotos, evidenciasItem, textoQuesito, nomeItem, dataBR, dataHoraBR, carregar, h, nl, pct, num1, pad2, STATUS_TXT, corNota, corPrio };
+  window.App = { S, st, porNum, EST, D, nomeVistoriador, fotosDe, faixaFotos, evidenciasItem, textoQuesito, nomeItem, dataBR, dataHoraBR, carregar, h, nl, pct, num1, pad2, STATUS_TXT, corNota, corPrio };
 
   (async () => {
     try {
