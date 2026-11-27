@@ -2,9 +2,13 @@
 """Extrai todo o conteúdo da Planilha Unificada de Vistoria JFAP (REV2) para
 app/js/data.js, usado pelo aplicativo de vistoria.
 
-Uso:  python3 tools/extrair_planilha.py <planilha.xlsx> [saida.js]
+Uso:  python3 tools/extrair_planilha.py <planilha.xlsx> [saida.js] [modelo_limpo.xlsx]
+
+Se for informado modelo_limpo.xlsx, grava também uma cópia da planilha com todas as
+células de resposta apagadas (identificação, avaliações, observações, fechamento), usada
+pelo app como modelo da exportação — assim respostas de campo não vão para o repositório.
 """
-import json, re, sys
+import json, os, re, sys
 import openpyxl
 
 
@@ -81,12 +85,24 @@ def station_sheet(ws, index_row):
                 cod = clean(r[0].value)
                 if tipo == "P":
                     if re.match(r"^P\d\d\.\d+[a-z]$", cod):
-                        # sub-quesito (ex.: P03.1a): pergunta na col. B, orientação na col. C
-                        it = {"codigo": cod, "indicador": None, "pergunta": clean(r[1].value),
-                              "observar": clean(r[2].value), "sub": True}
+                        # sub-quesito (ex.: P03.1a). Na REV2 a pergunta estava na col. B e a
+                        # orientação na C; nas versões seguintes, pergunta na C e orientação na D.
+                        if clean(r[3].value):
+                            perg, obs = clean(r[2].value), clean(r[3].value)
+                        else:
+                            perg, obs = clean(r[1].value), clean(r[2].value)
+                        it = {"codigo": cod, "indicador": None, "pergunta": perg,
+                              "observar": obs, "sub": True}
                     else:
-                        it = {"codigo": cod, "indicador": clean(r[1].value),
-                              "pergunta": clean(r[2].value), "observar": clean(r[3].value)}
+                        ind = clean(r[1].value)
+                        perg = clean(r[2].value)
+                        obs = clean(r[3].value)
+                        it = {"codigo": cod, "indicador": ind, "pergunta": perg, "observar": obs}
+                        # P03.1–P03.5: a col. C repete/refina o indicador e a pergunta está na col. D
+                        if perg == ind or (obs and obs.endswith("?") and perg and not perg.endswith("?")):
+                            it["pergunta"], it["observar"] = obs, None
+                            if perg and perg != ind:
+                                it["dimensao"] = perg
                 else:
                     it = {"codigo": cod, "item": clean(r[1].value), "verificar": clean(r[2].value)}
                 it["linha"] = j + 1
@@ -99,7 +115,41 @@ def station_sheet(ws, index_row):
     return st
 
 
-def main(src, out):
+def celulas_resposta(st):
+    """Endereços das células de resposta de uma estação (mesmas posições usadas pelo app)."""
+    cels = []
+    if st.get("linhaIdent"):
+        cels += [f"{c}{st['linhaIdent']}" for c in "ACEGI"]
+    if st.get("linhaAnotacoes"):
+        cels += [f"A{r}" for r in range(st["linhaAnotacoes"], st["linhaAnotacoes"] + 4)]
+    cels += [f"C{r}" for r in (st.get("linhasFechamento") or {}).values()]
+    for b in st["blocos"]:
+        cols = "EFGHIJ" if b["tipo"] == "P" else "DEFG"
+        for it in b["itens"]:
+            cels += [f"{c}{it['linha']}" for c in cols]
+    return cels
+
+
+def gravar_modelo_limpo(src, estacoes, destino):
+    wb = openpyxl.load_workbook(src)
+    n = 0
+    for st in estacoes:
+        ws = wb[st["aba"]]
+        for ref in celulas_resposta(st):
+            c = ws[ref]
+            if type(c).__name__ == "MergedCell":
+                continue
+            if c.value is not None and not (isinstance(c.value, str) and c.value.startswith("=")):
+                c.value = None
+                n += 1
+    wi = wb["ÍNDICE"]
+    for r in range(3, 31):
+        wi.cell(r, 8).value = None
+    wb.save(destino)
+    print(f"Modelo limpo gravado em {destino} ({n} células de resposta apagadas)")
+
+
+def main(src, out, modelo=None):
     wb = openpyxl.load_workbook(src)
     g = lambda ws, c: clean(ws[c].value)
 
@@ -162,7 +212,7 @@ def main(src, out):
     fech = [clean(r[0].value) for r in wb[wb.sheetnames[1]].iter_rows(min_row=56, max_row=61)]
 
     data = {
-        "fonte": src.split("/")[-1],
+        "fonte": os.path.basename(src),
         "titulo": g(wi, "A1"),
         "leiame": leiame,
         "parametros": parametros,
@@ -178,9 +228,13 @@ def main(src, out):
     open(out, "w", encoding="utf-8").write(js)
     tot = sum(len(it["itens"]) for e in estacoes for it in e["blocos"])
     semtexto = sorted({it["codigo"] for e in estacoes for b in e["blocos"] if b["tipo"] == "P"
-                       for it in b["itens"] if not it.get("pergunta")})
+                       for it in b["itens"] if not it.get("pergunta")
+                       and not any(x.get("sub") and x["codigo"].startswith(it["codigo"]) for x in b["itens"])})
+    if modelo:
+        gravar_modelo_limpo(src, estacoes, modelo)
     print(f"{len(estacoes)} estações, {tot} itens. Quesitos sem texto na planilha: {', '.join(semtexto)}")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "app/js/data.js")
+    main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "app/js/data.js",
+         sys.argv[3] if len(sys.argv) > 3 else None)

@@ -287,7 +287,7 @@
             <button data-cond="nao" data-bi="${i}" class="${c === 'nao' ? 'on' : ''}">Não</button>
           </span></div>` : ''}
       </header>
-      ${b.tipo === 'P' && b.itens.some(it => !textoQuesito(it).pergunta) ? `<p class="aviso peq">Os textos de “Pergunta de avaliação” e “O que observar” deste parâmetro não constam na planilha (células com fórmulas quebradas). Toque em ✎ para incluí-los — valem para todas as estações.</p>` : ''}
+      ${b.tipo === 'P' && b.itens.some(it => !Calc.ehCalculado(b, it) && !textoQuesito(it).pergunta) ? `<p class="aviso peq">Os textos de “Pergunta de avaliação” e “O que observar” deste parâmetro não constam na planilha (células com fórmulas quebradas). Toque em ✎ para incluí-los — valem para todas as estações.</p>` : ''}
       <div class="itens">${b.itens.map(it => itemHTML(e, b, it, ativo)).join('')}</div>
     </section>`;
   }
@@ -296,12 +296,20 @@
     return fotosDe(num, k).map(f => `<button class="thumb" data-foto="${h(f.id)}" title="${h(f.id)}"><img src="${thumbURL(f)}" alt="Foto ${f.num}" loading="lazy"><span>${Fotos.pad(f.num, 3)}</span></button>`).join('');
   }
 
+  /* números de fotos do item: fotos do app + números vindos de planilha importada */
+  function evidenciasItem(num, k) {
+    const fs = fotosDe(num, k);
+    const ext = ((st(num).r[k] || {}).fext || '').trim();
+    return [fs.length ? listaNums(fs) : '', ext].filter(Boolean).join(', ');
+  }
+
   function blocoFotos(e, k, dis) {
+    const ext = ((st(e.num).r[k] || {}).fext || '').trim();
     const fs = fotosDe(e.num, k);
     return `<div class="fotos-row">${miniaturas(e.num, k)}
       <button class="btn foto sm" data-act="cam" data-k="${h(k)}" ${dis}>📷 Foto</button>
       <button class="btn sec sm" data-act="gal" data-k="${h(k)}" ${dis}>Galeria</button>
-      <span class="evid">Fotos / Evidências (nº): <b>${fs.length ? listaNums(fs) : '—'}</b></span></div>`;
+      <span class="evid">Fotos / Evidências (nº): <b>${fs.length ? listaNums(fs) : (ext ? '' : '—')}</b>${ext ? `${fs.length ? ' · ' : ''}<span title="Números registrados na planilha importada">planilha: ${h(ext)}</span>` : ''}</span></div>`;
   }
 
   function itemHTML(e, b, it, ativo) {
@@ -331,8 +339,9 @@
     const calc = Calc.ehCalculado(b, it);
     const nota = calc ? Calc.notaCalculada(s, b, it) : Calc.notaDe(v.a);
     const cab = `<div class="item-h"><span class="cod">${h(it.codigo)}</span><span class="ind">${h(it.indicador || (it.sub ? 'Sub-quesito' : ''))}</span>
-        <span class="nota ${corNota(nota)}" title="Nota">${nota === null ? '–' : (calc ? num1(nota) : nota)}</span></div>`;
-    const textos = `
+        <span class="nota ${corNota(nota)}" title="Nota">${nota === null ? '–' : (calc ? num1(nota) : nota)}</span></div>
+      ${it.dimensao ? `<p class="dim">${h(it.dimensao)}</p>` : ''}`;
+    const textos = calc && !tq.pergunta ? '' : `
       ${tq.pergunta ? `<p class="perg">${nl(tq.pergunta)}${tq.custom ? ` <button class="lnk" data-editq="${h(it.codigo)}">✎</button>` : ''}</p>`
         : `<p class="perg vazio">Pergunta de avaliação não consta na planilha. <button class="lnk" data-editq="${h(it.codigo)}">✎ Incluir texto</button></p>`}
       ${tq.observar ? `<details class="obsv"><summary>O que observar</summary><p>${nl(tq.observar)}</p></details>` : ''}`;
@@ -752,7 +761,7 @@
         <a href="#/ref/parametros"><b>Legenda — Parâmetros P01–P09 e escala</b><small>LEGENDA_PARAMETROS</small></a>
         <a href="#/ref/vip"><b>Legenda — Itens ViP por tipologia</b><small>LEGENDA_VIP</small></a>
         <a href="#/ref/metodo"><b>Método e decisões</b><small>METODO_E_DECISOES</small></a>
-        <a href="#/quesitos"><b>Textos dos quesitos P02–P09</b><small>Completar perguntas ausentes na planilha</small></a>
+        ${codigosSemTexto().length ? `<a href="#/quesitos"><b>Textos dos quesitos</b><small>Completar perguntas ausentes na planilha</small></a>` : ''}
         <a href="#/config"><b>Configurações</b><small>Vistoriador padrão, fotos, numeração, dados</small></a>
       </nav>
       <p class="dica">Fonte: ${h(D.fonte)} · ${EST.length} estações · ${EST.reduce((a, e) => a + e.blocos.reduce((x, b) => x + b.itens.length, 0), 0)} itens. Os dados ficam salvos somente neste dispositivo — exporte backups com frequência.</p>`;
@@ -788,7 +797,7 @@
 
   function codigosSemTexto() {
     const m = new Map();
-    EST.forEach(e => e.blocos.forEach(b => { if (b.tipo === 'P') b.itens.forEach(it => { if (!it.pergunta && !m.has(it.codigo)) m.set(it.codigo, it.indicador); }); }));
+    EST.forEach(e => e.blocos.forEach(b => { if (b.tipo === 'P') b.itens.forEach(it => { if (!it.pergunta && !Calc.ehCalculado(b, it) && !m.has(it.codigo)) m.set(it.codigo, it.indicador); }); }));
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], 'pt', { numeric: true }));
   }
 
@@ -796,6 +805,10 @@
     topo('Textos dos quesitos', 'P02–P09', true);
     abaAtiva('mais');
     const cods = codigosSemTexto();
+    if (!cods.length) {
+      view.innerHTML = `<div class="card"><h3>Todos os textos constam na planilha ✔</h3><p class="dica">As perguntas de avaliação e as orientações “O que observar” de todos os quesitos P01–P09 vêm da planilha ${h(D.fonte)}. Não há nada a completar.</p></div>`;
+      return;
+    }
     view.innerHTML = `<div class="aviso">Na planilha REV2, as colunas “Pergunta de avaliação” e “O que observar” dos parâmetros P02–P09 contêm fórmulas quebradas (referências a células inexistentes), por isso os textos oficiais não aparecem. Cole aqui os textos do formulário oficial: eles serão exibidos em todas as estações e gravados na planilha exportada.</div>
       ${cods.map(([c, ind]) => { const t = S.cfg.textos[c] || {}; return `<section class="card"><h3>${h(c)} — ${h(ind)}</h3>
         <label>Pergunta de avaliação<textarea data-tq="${h(c)}" data-campo-q="pergunta" rows="3">${h(t.pergunta)}</textarea></label>
@@ -891,6 +904,11 @@
         <button class="btn" data-exp="pacote">Gerar pacote</button>
       </section>
       <section class="card exp">
+        <h3>Importar respostas de uma planilha (.xlsx)</h3>
+        <p>Traz para o app as respostas já digitadas na planilha de vistoria (avaliações, observações, prioridades, alertas, situação ViP, identificação e fechamento). Só os campos preenchidos na planilha são importados; o restante do app não é alterado. As fotos não vêm junto — os números da coluna “Fotos / Evidências” são mantidos como referência.</p>
+        <button class="btn sec" data-exp="importar">Escolher planilha…</button>
+      </section>
+      <section class="card exp">
         <h3>Backup e transferência</h3>
         <p>Salve um backup (.json com fotos) para não perder dados ou para continuar em outro aparelho.</p>
         <div class="linha2"><button class="btn" data-exp="backup">Salvar backup</button><button class="btn sec" data-exp="restaurar">Restaurar backup</button></div>
@@ -911,7 +929,8 @@
         if (tipo === 'pacote') await Export.pacote({ prog });
         if (tipo === 'backup') await Export.backup({ prog });
         if (tipo === 'restaurar') { $('#inBackup').value = ''; $('#inBackup').click(); }
-        if (tipo !== 'restaurar') prog('Concluído ✔');
+        if (tipo === 'importar') { $('#inXlsx').value = ''; $('#inXlsx').click(); }
+        if (tipo !== 'restaurar' && tipo !== 'importar') prog('Concluído ✔');
       } catch (err) { console.error(err); prog('Erro: ' + err.message); toast('Erro: ' + err.message, 5000); }
       $$('[data-exp]').forEach(x => { x.disabled = false; });
     };
@@ -928,6 +947,19 @@
     } catch (err) { toast('Backup inválido: ' + err.message, 5000); }
   });
 
+  $('#inXlsx').addEventListener('change', async ev => {
+    const f = ev.target.files[0]; if (!f) return;
+    const status = $('#expStatus');
+    const prog = msg => { if (status) status.textContent = msg; };
+    if (!confirm(`Importar as respostas de “${f.name}”? Campos preenchidos na planilha substituem os do app; os demais são mantidos.`)) return;
+    try {
+      const r = await Export.importarXlsx(f, prog);
+      for (const num of r.estacoes) await DB.put('estacoes', st(num));
+      prog(`Importado ✔ — ${r.campos} campo(s) em ${r.estacoes.length} estação(ões): ${r.estacoes.map(pad2).join(', ') || 'nenhuma'}.`);
+      toast(`Planilha importada: ${r.estacoes.length} estação(ões)`, 4000);
+    } catch (err) { console.error(err); prog('Erro: ' + err.message); toast('Não foi possível importar: ' + err.message, 5000); }
+  });
+
   /* ============================================================ INICIALIZAÇÃO */
   async function carregar() {
     const [ests, fotos, cfg] = await Promise.all([DB.todos('estacoes'), DB.todos('fotos'), DB.get('config', 'cfg')]);
@@ -940,7 +972,7 @@
   }
 
   // API para o módulo de exportação
-  window.App = { S, st, porNum, EST, D, fotosDe, faixaFotos, textoQuesito, nomeItem, dataBR, dataHoraBR, carregar, h, nl, pct, num1, pad2, STATUS_TXT, corNota, corPrio };
+  window.App = { S, st, porNum, EST, D, fotosDe, faixaFotos, evidenciasItem, textoQuesito, nomeItem, dataBR, dataHoraBR, carregar, h, nl, pct, num1, pad2, STATUS_TXT, corNota, corPrio };
 
   (async () => {
     try {

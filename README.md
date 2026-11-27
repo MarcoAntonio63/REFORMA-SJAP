@@ -1,7 +1,8 @@
 # Vistoria JFAP — Prédio Sede (app)
 
 Aplicativo web (PWA, funciona offline e pode ser instalado no celular) criado a partir da
-**Planilha Unificada de Vistoria por Estação — REV2** da Seção Judiciária do Amapá.
+**Planilha Unificada de Vistoria por Estação** (versão atual: `Planilha_Unificada_Vistoria_JFAP_1.xlsx`)
+da Seção Judiciária do Amapá.
 Todo o conteúdo da planilha foi mantido: 28 estações (01–29, sem a 04), 581 itens
 (parâmetros P01–P09 e itens ViP), LEIA-ME, ÍNDICE, legendas, método e decisões e as
 regras de cálculo da aba RESUMO.
@@ -46,13 +47,19 @@ alerta crítico prevalecendo sobre a média; média por parâmetro em todo o pr�
 
 Os dados ficam salvos **somente no dispositivo** (IndexedDB). Faça backups com frequência.
 
-## Atenção: textos ausentes na planilha REV2
+## Importar respostas de uma planilha
 
-Nas estações 05 a 28, as células “Pergunta de avaliação” e “O que observar” dos parâmetros
-**P02–P09** contêm fórmulas quebradas (referências a células inexistentes, como `C173`), por isso
-os textos oficiais não aparecem nem na planilha. O app mostra o código e o indicador e permite colar
-os textos do formulário oficial em **Mais → Textos dos quesitos** (ou no ✎ de cada item); eles valem
-para todas as estações e são gravados na planilha exportada. P01 e P03.1a–c estão completos.
+Em **Exportar → Importar respostas de uma planilha**, escolha um .xlsx de vistoria (por exemplo, uma
+planilha preenchida no Excel). O app traz identificação, avaliações, observações, prioridades, alertas,
+situação ViP, anotações e fechamento. Só os campos preenchidos na planilha são importados; o restante
+do app é mantido. Fotos não vêm junto — os números da coluna “Fotos / Evidências” ficam como referência
+(“planilha: …”). Blocos condicionais avaliados com notas são marcados como “condição confirmada”.
+
+## Textos dos quesitos
+
+A partir da planilha `_1`, todas as perguntas de avaliação e orientações “O que observar” (P01–P09)
+vêm da própria planilha. Se uma versão futura vier sem algum texto, o app volta a oferecer
+**Mais → Textos dos quesitos** para completá-lo.
 
 ## Como usar
 
@@ -74,15 +81,16 @@ app/
   js/fotos.js    captura, carimbo e miniaturas
   js/export.js   Excel, PDF, ZIP e backup
   js/db.js       armazenamento local (IndexedDB)
-  modelo/        planilha REV2 original (modelo da exportação)
+  modelo/        planilha de vistoria sem respostas (modelo da exportação)
   vendor/        ExcelJS 4.4.0 e JSZip 3.10.1 (MIT)
 tools/extrair_planilha.py   regenera js/data.js a partir da planilha
 ```
 
-Se a planilha for revisada, substitua `app/modelo/…xlsx` e rode:
+Se a planilha for revisada, rode (o 3º argumento grava o modelo sem respostas, para que dados de
+campo não fiquem no repositório):
 
 ```bash
-python3 tools/extrair_planilha.py app/modelo/Planilha_Unificada_Vistoria_JFAP_REV2.xlsx app/js/data.js
+python3 tools/extrair_planilha.py <nova_planilha.xlsx> app/js/data.js app/modelo/modelo_vistoria_JFAP.xlsx
 ```
 
 Depois aumente `VERSAO` em `app/sw.js` para que os aparelhos recebam a atualização.

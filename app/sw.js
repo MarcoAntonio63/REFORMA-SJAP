@@ -1,10 +1,10 @@
 /* Service worker: mantém o aplicativo disponível sem internet (cache do app). */
-const VERSAO = 'vistoria-jfap-v1';
+const VERSAO = 'vistoria-jfap-v2';
 const ARQUIVOS = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest',
   'js/data.js', 'js/db.js', 'js/calc.js', 'js/fotos.js', 'js/app.js', 'js/export.js',
   'vendor/exceljs.min.js', 'vendor/jszip.min.js',
-  'modelo/Planilha_Unificada_Vistoria_JFAP_REV2.xlsx',
+  'modelo/modelo_vistoria_JFAP.xlsx',
   'icons/icon-192.png', 'icons/icon-512.png'
 ];
 self.addEventListener('install', ev => {

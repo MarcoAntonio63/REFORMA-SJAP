@@ -141,6 +141,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--azul2); out
 .ind { flex: 1; font-weight: 600; }
 .nota { flex: none; min-width: 34px; text-align: center; font-weight: 700; border-radius: 8px; padding: 1px 6px; }
 .perg { margin: 8px 0 4px; }
+.dim { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: var(--tx2); }
 .perg.vazio { color: var(--tx2); font-style: italic; font-size: 13.5px; }
 .obsv summary { cursor: pointer; font-size: 13px; color: var(--azul2); padding: 4px 0; }
 .obsv p { margin: 4px 0 6px; font-size: 13.5px; color: var(--tx2); }

@@ -2,7 +2,7 @@
    ZIP de fotos, pacote completo e backup/restauração (JSON). */
 const Export = (() => {
   const A = () => window.App;
-  const MODELO = 'modelo/Planilha_Unificada_Vistoria_JFAP_REV2.xlsx';
+  const MODELO = 'modelo/modelo_vistoria_JFAP.xlsx';
 
   const scripts = {};
   function carregarScript(src) {
@@ -22,7 +22,7 @@ const Export = (() => {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
-  const nomesFotos = (num, k) => A().fotosDe(num, k).map(f => String(f.num).padStart(3, '0')).join(', ');
+  const nomesFotos = (num, k) => A().evidenciasItem(num, k);
 
   /* ------------------------------------------------------------ Excel */
   async function gerarXlsx({ fotos = true, prog = () => {} } = {}) {
@@ -335,5 +335,133 @@ const Export = (() => {
     window.print();
   }
 
-  return { xlsx, gerarXlsx, zipFotos, backup, restaurar, pacote, relatorio };
+  /* ------------------------------------------------------------ Importar respostas de planilha */
+  function texto(v) {
+    if (v === null || v === undefined) return '';
+    if (v instanceof Date) return v;
+    if (typeof v === 'object') {
+      if (v.richText) return v.richText.map(x => x.text).join('').trim();
+      if ('result' in v) return texto(v.result);
+      if ('formula' in v || 'sharedFormula' in v) return '';
+      if (v.text !== undefined) return String(v.text).trim();
+      if (v.error) return '';
+    }
+    return String(v).replace(/ /g, ' ').trim();
+  }
+  const p2 = n => String(n).padStart(2, '0');
+  function dataISO(v) {
+    if (v instanceof Date) return `${v.getUTCFullYear()}-${p2(v.getUTCMonth() + 1)}-${p2(v.getUTCDate())}`;
+    const s = String(v); let m;
+    if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/))) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${p2(m[2])}-${p2(m[1])}`;
+    if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})/))) return `${m[1]}-${m[2]}-${m[3]}`;
+    if (/^\d+(\.\d+)?$/.test(s)) { const d = new Date(Math.round((+s - 25569) * 86400000)); return dataISO(d); }
+    return '';
+  }
+  function horaHM(v) {
+    if (v instanceof Date) return `${p2(v.getUTCHours())}:${p2(v.getUTCMinutes())}`;
+    const s = String(v); let m;
+    if ((m = s.match(/^(\d{1,2})[:h](\d{2})/))) return `${p2(m[1])}:${m[2]}`;
+    if (/^0?\.\d+$/.test(s)) { const t = Math.round(+s * 1440); return `${p2(Math.floor(t / 60))}:${p2(t % 60)}`; }
+    return '';
+  }
+  /* casa um valor da planilha com uma opção da lista (pelo primeiro termo: "4", "N/V", "B", "NA"...) */
+  function opcao(v, lista) {
+    if (v === '' || v === null || v === undefined) return '';
+    const s = String(v).trim();
+    const exato = lista.find(o => o.toLowerCase() === s.toLowerCase());
+    if (exato) return exato;
+    const chave = s.split(/[\s—–-]/)[0].toUpperCase().replace(/\.0+$/, '');
+    return lista.find(o => o.split(' ')[0].toUpperCase() === chave) || '';
+  }
+  const simNao = v => { const s = String(v || '').trim().toLowerCase(); return s.startsWith('s') ? 'Sim' : s.startsWith('n') ? 'Não' : ''; };
+
+  async function importarXlsx(file, prog = () => {}) {
+    const { EST, st, D } = A();
+    const L = D.listas;
+    prog('Carregando biblioteca de planilhas…');
+    await carregarScript('vendor/exceljs.min.js');
+    prog('Lendo planilha…');
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await file.arrayBuffer());
+    const tocadas = new Set(); let campos = 0; let abas = 0;
+
+    for (const e of EST) {
+      const ws = wb.getWorksheet(e.aba); if (!ws) continue;
+      abas++;
+      prog(`Lendo estação ${p2(e.num)}…`);
+      const s = st(e.num);
+      const cel = ref => texto(ws.getCell(ref).value);
+      const pega = (val, aplicar) => { if (val !== '' && val !== null && val !== undefined) { aplicar(val); campos++; tocadas.add(e.num); } };
+
+      if (e.linhaIdent) {
+        const r = e.linhaIdent;
+        pega(dataISO(cel('A' + r)), v => { s.ident.data = v; });
+        pega(cel('C' + r), v => { s.ident.vistoriador = String(v); });
+        pega(cel('E' + r), v => { s.ident.acompanhante = String(v); });
+        pega(horaHM(cel('G' + r)), v => { s.ident.inicio = v; });
+        pega(horaHM(cel('I' + r)), v => { s.ident.termino = v; });
+      }
+      if (e.linhaAnotacoes) {
+        const t = [0, 1, 2, 3].map(i => cel('A' + (e.linhaAnotacoes + i))).filter(x => x !== '').join('\n');
+        pega(t, v => { s.anot = v; });
+      }
+
+      for (const b of e.blocos) {
+        const tit = String(cel('A' + b.linhaTitulo));
+        const mc = tit.match(/condição confirmada em campo:\s*(SIM|NÃO|NAO)/i);
+        if (b.condicional && mc) pega(/^SIM$/i.test(mc[1]) ? 'sim' : 'nao', v => { s.cond[b.codigo] = v; });
+        for (const it of b.itens) {
+          const r = it.linha; const k = Calc.chave(b, it);
+          const v = s.r[k] ||= {};
+          const apps = A().fotosDe(e.num, k).map(f => String(f.num).padStart(3, '0')).join(', ');
+          // números de fotos da planilha (sem repetir os das fotos do próprio app, caso a planilha tenha sido exportada por ele)
+          const fext = col => {
+            let t = String(cel(col + r)).trim();
+            if (apps && t.startsWith(apps)) t = t.slice(apps.length).replace(/^,\s*/, '');
+            pega(t, x => { v.fext = x; });
+          };
+          if (b.tipo === 'ViP') {
+            pega(opcao(cel('D' + r), L.situacao), x => { v.s = x; });
+            pega(cel('E' + r), x => { v.obs = String(x); });
+            pega(simNao(cel('F' + r)), x => { v.alerta = x; v.alertaAuto = false; });
+            if ((v.s || '').startsWith('C ') && !v.alerta) { v.alerta = 'Sim'; v.alertaAuto = true; }
+            fext('G');
+            continue;
+          }
+          let obs = String(cel('G' + r));
+          if (obs.startsWith('Condição não confirmada em campo.')) obs = obs.replace('Condição não confirmada em campo.', '').trim();
+          if (Calc.ehCalculado(b, it)) { pega(obs, x => { v.obs = x; }); fext('J'); continue; }
+          let aval = opcao(cel('E' + r), L.avaliacao);
+          if (!aval) aval = opcao(cel('F' + r), L.avaliacao);
+          if (aval && s.cond[b.codigo] === 'nao' && aval.startsWith('N/A')) aval = '';
+          pega(aval, x => { v.a = x; });
+          pega(obs, x => { v.obs = x; });
+          const prio = opcao(cel('H' + r), L.prioridade) || (String(cel('H' + r)).trim() === '—' ? '—' : '');
+          if (prio && !(s.cond[b.codigo] === 'nao' && prio === '—')) pega(prio, x => { v.prio = x; v.prioAuto = false; });
+          else if (v.a && (!v.prio || v.prioAuto)) { const n = Calc.notaDe(v.a); v.prio = n === null ? (v.a.startsWith('N/A') ? '—' : '') : Calc.prioridadeDe(n); v.prioAuto = true; }
+          pega(simNao(cel('I' + r)), x => { v.alerta = x; v.alertaAuto = false; });
+          fext('J');
+        }
+        // bloco condicional avaliado com notas na planilha → condição considerada confirmada em campo
+        if (b.tipo === 'P' && b.condicional && !s.cond[b.codigo] &&
+            b.itens.some(it => Calc.notaDe((s.r[Calc.chave(b, it)] || {}).a) !== null)) {
+          s.cond[b.codigo] = 'sim'; tocadas.add(e.num);
+        }
+      }
+
+      const lf = e.linhasFechamento || {};
+      const F = rot => lf[rot] ? String(cel('C' + lf[rot])) : '';
+      const opF = t => ['Sim', 'Parcial', 'Não', 'Não se aplica'].find(o => o.toLowerCase() === t.toLowerCase()) || '';
+      pega(opF(F('Verificado P01–P09')), v => { s.fech.verP = v; });
+      pega(opF(F('Verificado ViP')), v => { s.fech.verV = v; });
+      pega(F('Observações gerais da estação'), v => { s.fech.obs = v; });
+      pega(F('Pendências / retornar'), v => { s.fech.pend = v; });
+      pega(F('Assinatura do vistoriador').replace(/\s*—\s*assinatura digital colhida no aplicativo\s*$/i, '').replace(/^assinatura digital colhida no aplicativo$/i, ''), v => { s.fech.assinNome = v; });
+      if (tocadas.has(e.num)) s.upd = Date.now();
+    }
+    if (!abas) throw new Error('nenhuma aba de estação encontrada — confira se é a planilha de vistoria');
+    return { campos, estacoes: [...tocadas].sort((a, b) => a - b) };
+  }
+
+  return { xlsx, gerarXlsx, zipFotos, backup, restaurar, pacote, relatorio, importarXlsx };
 })();
