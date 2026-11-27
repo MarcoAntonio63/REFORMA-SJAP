@@ -33,17 +33,25 @@
   }
   const st = num => (S.est[num] ||= novoEstado(num));
 
-  const timers = {};
+  /* Gravação imediata a cada alteração (sem espera), para nada se perder se o app for fechado
+     logo após um toque. Se uma gravação da mesma estação estiver em curso, grava de novo ao final. */
+  const gravando = {}, regravar = {};
   function salvarEst(num) {
     st(num).upd = Date.now();
     indicador('pendente');
-    clearTimeout(timers[num]);
-    timers[num] = setTimeout(async () => {
-      try { await DB.put('estacoes', S.est[num]); indicador('ok'); } catch (e) { indicador('erro'); toast('Erro ao salvar: ' + e.message); }
-    }, 350);
+    if (gravando[num]) { regravar[num] = true; return; }
+    gravar(num);
+  }
+  async function gravar(num) {
+    gravando[num] = true;
+    try { await DB.put('estacoes', S.est[num]); }
+    catch (e) { indicador('erro'); toast('Erro ao salvar: ' + e.message); }
+    gravando[num] = false;
+    if (regravar[num]) { regravar[num] = false; return gravar(num); }
+    if (!Object.values(gravando).some(Boolean)) indicador('ok');
   }
   async function salvarCfg() { await DB.put('config', S.cfg, 'cfg'); }
-  function flush() { Object.keys(timers).forEach(n => { clearTimeout(timers[n]); DB.put('estacoes', S.est[n]); }); }
+  function flush() { Object.keys(regravar).forEach(n => { if (regravar[n]) { regravar[n] = false; DB.put('estacoes', S.est[n]); } }); }
   window.addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
 
@@ -78,6 +86,9 @@
     return { pergunta: it.pergunta || t.pergunta || '', observar: it.observar || t.observar || '', custom: !it.pergunta };
   }
 
+  /* faixa de numeração de fotos por vistoriador (equipe de até 4): 1–499, 501–999, 1001–1499, 1501–1999 */
+  const faixaVistoriador = () => { const n = +S.cfg.vistoriadorNum; return n ? { ini: (n - 1) * 500 + 1, fim: n * 500 - 1 } : null; };
+
   const fotosDe = (num, k) => S.fotos.filter(f => f.estacao === num && (k === undefined || f.chave === k)).sort((a, b) => a.num - b.num);
   const listaNums = fs => fs.map(f => Fotos.pad(f.num, 3)).join(', ');
   function faixaFotos(num) {
@@ -106,6 +117,7 @@
     const p = hsh.split('/').filter(Boolean);
     window.scrollTo(0, 0);
     view.onclick = view.oninput = view.onchange = null;
+    document.dispatchEvent(new Event('sair-tela'));
     if (p[0] === 'e' && porNum[+p[1]]) return telaEstacao(+p[1], p[2]);
     if (p[0] === 'resumo') return telaResumo();
     if (p[0] === 'fotos') return telaFotos(p[1] ? +p[1] : null);
@@ -571,9 +583,11 @@
     const e = porNum[alvo.num];
     let codItem = 'Geral do local';
     if (alvo.k) codItem = alvo.k.split('|')[1];
+    const fx = faixaVistoriador();
     for (const file of files) {
-      let n = S.cfg.proxFoto;
+      let n = Math.max(S.cfg.proxFoto, fx ? fx.ini : 1);
       while (S.fotos.some(f => f.num === n)) n++;
+      if (fx && n > fx.fim) toast(`Atenção: a faixa de fotos do vistoriador ${S.cfg.vistoriadorNum} (${fx.ini}–${fx.fim}) terminou.`, 5000);
       S.cfg.proxFoto = n + 1; await salvarCfg();
       const id = Fotos.nomeArquivo(alvo.num, n);
       toast(`Processando foto ${Fotos.pad(n, 3)}…`, 8000);
@@ -588,6 +602,7 @@
         S.fotos.push(reg);
         marcarInicio(alvo.num); salvarEst(alvo.num);
         toast(`Foto ${Fotos.pad(n, 3)} salva (${id})`);
+        Nuvem.atualizarIndicador();
         if (numAtual() === alvo.num) atualizarFotosEst(alvo.num, alvo.k);
       } catch (err) { toast('Não foi possível processar a imagem: ' + err.message, 5000); }
     }
@@ -762,7 +777,8 @@
         <a href="#/ref/vip"><b>Legenda — Itens ViP por tipologia</b><small>LEGENDA_VIP</small></a>
         <a href="#/ref/metodo"><b>Método e decisões</b><small>METODO_E_DECISOES</small></a>
         ${codigosSemTexto().length ? `<a href="#/quesitos"><b>Textos dos quesitos</b><small>Completar perguntas ausentes na planilha</small></a>` : ''}
-        <a href="#/config"><b>Configurações</b><small>Vistoriador padrão, fotos, numeração, dados</small></a>
+        <a href="#/config"><b>Configurações</b><small>Equipe, envio para o Google Drive, fotos, dados</small></a>
+        <a href="#/ref/nuvem"><b>Configurar o Google Drive</b><small>Passo a passo do envio automático da equipe</small></a>
       </nav>
       <p class="dica">Fonte: ${h(D.fonte)} · ${EST.length} estações · ${EST.reduce((a, e) => a + e.blocos.reduce((x, b) => x + b.itens.length, 0), 0)} itens. Os dados ficam salvos somente neste dispositivo — exporte backups com frequência.</p>`;
   }
@@ -792,6 +808,35 @@
     } else if (qual === 'metodo') {
       topo('Método e decisões', 'METODO_E_DECISOES', true);
       view.innerHTML = `<section class="card ref"><div class="tabela-wrap"><table class="tabela"><thead><tr><th>Tema</th><th>Decisão / referência</th></tr></thead><tbody>${D.metodo.map(m => `<tr><td><b>${h(m.tema)}</b></td><td>${h(m.decisao)}</td></tr>`).join('')}</tbody></table></div></section>`;
+    } else if (qual === 'nuvem') {
+      topo('Configurar o Google Drive', 'Uma vez, pelo responsável da equipe', true);
+      view.innerHTML = `<section class="card ref">
+        <h3>1. Publicar o recebedor (responsável, no computador)</h3>
+        <ol class="passos">
+          <li>Entre na conta Google que vai guardar os arquivos e abra <a href="https://script.google.com" target="_blank" rel="noopener">script.google.com</a> → <b>Novo projeto</b>.</li>
+          <li>Apague o conteúdo do editor e cole o código abaixo (botão <b>Copiar código</b>).</li>
+          <li>Na linha <code>CODIGO_EQUIPE</code>, troque <code>TROQUE-ESTE-CODIGO</code> por uma senha da equipe (ex.: <code>jfap-2026-k7x</code>). Salve.</li>
+          <li><b>Implantar → Nova implantação</b> → engrenagem → <b>App da Web</b>. Executar como: <b>Eu</b>. Quem pode acessar: <b>Qualquer pessoa</b>. Clique em <b>Implantar</b>.</li>
+          <li>Autorize o acesso ao Drive (se aparecer “O Google não verificou este app”, clique em <i>Avançado → Acessar</i> — o app é seu).</li>
+          <li>Copie a <b>URL do app da Web</b> (termina em <code>/exec</code>) e envie, junto com o código da equipe, aos 4 vistoriadores.</li>
+        </ol>
+        <h3>2. Em cada celular</h3>
+        <ol class="passos">
+          <li><b>Mais → Configurações</b>: escolha <b>Vistoriador 1, 2, 3 ou 4</b> (um número diferente por pessoa) e o nome.</li>
+          <li>Cole a URL e o código da equipe, mantenha <b>a cada 10 minutos</b> e toque em <b>Testar conexão</b>.</li>
+        </ol>
+        <h3>3. No Drive</h3>
+        <p>Os arquivos aparecem em <b>Meu Drive / Vistoria JFAP / Vistoriador N</b>: pasta <b>fotos</b>, <b>dados.json</b> e <b>Vistoria_JFAP_Vistoriador_N.xlsx</b>. Para a planilha única da equipe, use <b>Exportar → Consolidar equipe</b> (gera e salva em <b>Vistoria JFAP / Consolidado</b>).</p>
+        <p class="dica">Guarde o código da equipe: quem tiver a URL e o código consegue enviar arquivos para a pasta. Se precisar trocar, altere o código no script, reimplante e atualize os celulares.</p>
+        <div class="linha2"><button class="btn sm" id="copiarGs">Copiar código</button></div>
+        <pre class="codigo" id="codigoGs">Carregando…</pre>
+      </section>`;
+      fetch('nuvem/Codigo.gs').then(r => r.text()).then(t => { $('#codigoGs').textContent = t; });
+      $('#copiarGs').onclick = async () => {
+        const t = $('#codigoGs').textContent;
+        try { await navigator.clipboard.writeText(t); toast('Código copiado'); }
+        catch (e) { const r = document.createRange(); r.selectNodeContents($('#codigoGs')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast('Selecionado — use Copiar'); }
+      };
     } else location.hash = '#/mais';
   }
 
@@ -840,12 +885,29 @@
     abaAtiva('mais');
     const uso = await DB.uso();
     const c = S.cfg;
+    const nv = Nuvem.cfg();
+    const fx = faixaVistoriador();
     view.innerHTML = `
       <section class="card">
         <h3>Equipe</h3>
-        <label>Vistoriador padrão<input type="text" data-cfg="vistoriadorPadrao" value="${h(c.vistoriadorPadrao)}"></label>
+        <label>Este aparelho é do
+          <select data-cfg="vistoriadorNum"><option value="0">Vistoria individual (sem equipe)</option>${[1, 2, 3, 4].map(n => `<option value="${n}" ${+c.vistoriadorNum === n ? 'selected' : ''}>Vistoriador ${n} — fotos ${Fotos.pad((n - 1) * 500 + 1, 3)} a ${n * 500 - 1}</option>`).join('')}</select>
+        </label>
+        <label>Nome do vistoriador<input type="text" data-cfg="vistoriadorPadrao" value="${h(c.vistoriadorPadrao)}"></label>
         <label>Acompanhante padrão<input type="text" data-cfg="acompanhantePadrao" value="${h(c.acompanhantePadrao)}"></label>
-        <p class="dica">Preenchidos automaticamente ao iniciar cada estação.</p>
+        <p class="dica">Nome e acompanhante são preenchidos ao iniciar cada estação. ${fx ? `Fotos deste aparelho: ${Fotos.pad(fx.ini, 3)} a ${fx.fim} (padrão JFAP_Lxx_Fyyy mantido, sem repetir números entre a equipe).` : 'Com equipe, escolha um número diferente em cada celular.'}</p>
+      </section>
+      <section class="card">
+        <h3>Envio para o Google Drive</h3>
+        <p class="dica">O salvamento no aparelho é imediato. Aqui você define a cópia periódica para a pasta da equipe no Google Drive. <a href="#/ref/nuvem">Como configurar (uma vez)</a></p>
+        <label>URL do app da Web (Google Apps Script)<input type="url" data-nuvem="url" value="${h(nv.url)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+        <label>Código da equipe<input type="text" data-nuvem="token" value="${h(nv.token)}" autocomplete="off"></label>
+        <label>Enviar a cada
+          <select data-nuvem="intervalo">${[[5, '5 minutos'], [10, '10 minutos'], [15, '15 minutos'], [30, '30 minutos'], [0, 'Somente manual']].map(([v, t]) => `<option value="${v}" ${+nv.intervalo === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+        </label>
+        <p id="nuvemStatus" class="dica"></p>
+        <div class="linha2"><button class="btn sec sm" id="nuvemTestar">Testar conexão</button><button class="btn sm" id="nuvemEnviar">Enviar agora</button></div>
+        <p class="dica">Envia: fotos novas (JFAP_Lxx_Fyyy.jpg), as respostas (dados.json) e a planilha do vistoriador, que é atualizada ao concluir cada estação e em “Enviar agora”. Só envia o que mudou. Sem internet, fica pendente para o ciclo seguinte. O envio ocorre com o app aberto.</p>
       </section>
       <section class="card">
         <h3>Fotos</h3>
@@ -860,10 +922,43 @@
         <p>${uso ? `Em uso: ${(uso.usage / 1048576).toFixed(1)} MB de ${(uso.quota / 1048576).toFixed(0)} MB disponíveis.` : 'Informação indisponível neste navegador.'}</p>
         <button class="btn perigo" id="apagarTudo">Apagar todos os dados da vistoria</button>
       </section>`;
+    const stNuvem = () => {
+      const el = $('#nuvemStatus'); if (!el) return;
+      const sN = Nuvem.status(); const p = Nuvem.pendentes();
+      el.textContent = !Nuvem.configurado() ? (c.vistoriadorNum ? 'Preencha a URL e o código da equipe.' : 'Escolha o número do vistoriador e preencha a URL e o código da equipe.')
+        : `${sN.msg || ''}${p ? ` · ${p} item(ns) pendente(s)` : ''}`;
+    };
+    stNuvem();
+    document.addEventListener('nuvem-status', stNuvem);
+    document.addEventListener('sair-tela', () => document.removeEventListener('nuvem-status', stNuvem), { once: true });
     view.onchange = async ev => {
-      const t = ev.target; const k = t.dataset.cfg; if (!k) return;
-      c[k] = t.type === 'checkbox' ? t.checked : (['maxLado', 'qualidade', 'proxFoto'].includes(k) ? +t.value : t.value);
-      await salvarCfg(); toast('Configuração salva');
+      const t = ev.target;
+      if (t.dataset.nuvem) {
+        const nvc = Nuvem.cfg();
+        nvc[t.dataset.nuvem] = t.dataset.nuvem === 'intervalo' ? +t.value : t.value.trim();
+        await salvarCfg(); Nuvem.atualizarIndicador(); stNuvem(); toast('Configuração salva'); return;
+      }
+      const k = t.dataset.cfg; if (!k) return;
+      c[k] = t.type === 'checkbox' ? t.checked : (['maxLado', 'qualidade', 'proxFoto', 'vistoriadorNum'].includes(k) ? +t.value : t.value);
+      if (k === 'vistoriadorNum' && c[k]) {
+        const f = faixaVistoriador();
+        if (c.proxFoto < f.ini || c.proxFoto > f.fim) c.proxFoto = f.ini;
+      }
+      await salvarCfg(); Nuvem.atualizarIndicador(); toast('Configuração salva');
+      if (k === 'vistoriadorNum') telaConfig();
+    };
+    $('#nuvemTestar').onclick = async () => {
+      const el = () => $('#nuvemStatus') || document.createElement('p');   // a tela pode ter sido redesenhada
+      el().textContent = 'Testando…';
+      try { const pasta = await Nuvem.testar(); el().innerHTML = `Conexão OK ✔ — pasta: <a href="${h(pasta)}" target="_blank" rel="noopener">Vistoria JFAP</a>`; }
+      catch (err) { el().textContent = 'Falhou: ' + err.message; }
+    };
+    $('#nuvemEnviar').onclick = async ev => {
+      ev.target.disabled = true;
+      const r = await Nuvem.ciclo({ forcar: true, prog: m => { $('#nuvemStatus').textContent = m; } });
+      ev.target.disabled = false;
+      if (!r.ok) $('#nuvemStatus').textContent = r.motivo === 'config' ? 'Configure o envio primeiro.' : r.motivo === 'offline' ? 'Sem internet — tente novamente com sinal.' : r.motivo === 'ocupado' ? 'Um envio já está em andamento.' : 'Falhou: ' + r.motivo;
+      else toast('Enviado para o Google Drive ✔');
     };
     $('#apagarTudo').onclick = async () => {
       if (!confirm('Apagar TODAS as respostas e fotos deste dispositivo? Faça um backup antes.')) return;
@@ -904,6 +999,11 @@
         <button class="btn" data-exp="pacote">Gerar pacote</button>
       </section>
       <section class="card exp">
+        <h3>Consolidar equipe (Google Drive)</h3>
+        <p>Junta as respostas enviadas pelos vistoriadores 1 a 4 numa planilha única (com os links das fotos no Drive), baixa o arquivo e salva uma cópia em <b>Vistoria JFAP / Consolidado</b>. Peça à equipe um “Enviar agora” antes.</p>
+        <button class="btn" data-exp="consolidar" ${Nuvem.cfg().url ? '' : 'disabled'}>Consolidar equipe</button>
+      </section>
+      <section class="card exp">
         <h3>Importar respostas de uma planilha (.xlsx)</h3>
         <p>Traz para o app as respostas já digitadas na planilha de vistoria (avaliações, observações, prioridades, alertas, situação ViP, identificação e fechamento). Só os campos preenchidos na planilha são importados; o restante do app não é alterado. As fotos não vêm junto — os números da coluna “Fotos / Evidências” são mantidos como referência.</p>
         <button class="btn sec" data-exp="importar">Escolher planilha…</button>
@@ -927,6 +1027,7 @@
         if (tipo === 'pdf') await Export.relatorio({ vazias: $('#rVazias').checked, prog });
         if (tipo === 'zip') await Export.zipFotos({ prog });
         if (tipo === 'pacote') await Export.pacote({ prog });
+        if (tipo === 'consolidar') { const r = await Export.consolidar({ prog }); prog(r); toast('Planilha consolidada gerada', 4000); $$('[data-exp]').forEach(x => { x.disabled = false; }); return; }
         if (tipo === 'backup') await Export.backup({ prog });
         if (tipo === 'restaurar') { $('#inBackup').value = ''; $('#inBackup').click(); }
         if (tipo === 'importar') { $('#inXlsx').value = ''; $('#inXlsx').click(); }
@@ -980,6 +1081,7 @@
       DB.persistir();
       indicador('ok');
       rota();
+      Nuvem.iniciar();
     } catch (err) {
       view.innerHTML = `<div class="aviso">Não foi possível abrir o banco de dados local deste navegador (${h(err.message)}). Verifique se não está em modo privado.</div>`;
     }

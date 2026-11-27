@@ -29,6 +29,12 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .topbar-title strong { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topbar-title small { opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .icon-btn { background: none; border: 0; color: #fff; padding: 6px; margin-left: -6px; cursor: pointer; }
+.nuvem-ind { color: #fff; text-decoration: none; font-size: 12.5px; padding: 3px 8px; border-radius: 999px; background: rgba(255,255,255,.14); white-space: nowrap; }
+.nuvem-ind.pend { background: rgba(255,192,0,.3); }
+.nuvem-ind.erro { background: rgba(217,48,37,.55); }
+.nuvem-ind.env { background: rgba(255,255,255,.28); }
+.codigo { white-space: pre; overflow: auto; max-height: 320px; font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--nxbg); padding: 10px; border-radius: 8px; }
+.passos li { margin: 6px 0; }
 .save-ind { font-size: 14px; color: #7ee2a0; transition: color .2s; }
 .save-ind.pendente { color: var(--amarelo); }
 .save-ind.erro { color: #ff8a80; }
@@ -54,7 +60,7 @@ main { max-width: 900px; margin: 0 auto; padding: 14px 16px 24px; outline: none;
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .lnk { background: none; border: 0; color: var(--azul2); font: inherit; padding: 2px 4px; cursor: pointer; text-decoration: underline; }
 label { display: block; font-size: 13px; color: var(--tx2); margin: 8px 0; }
-input[type=text], input[type=date], input[type=time], input[type=number], input[type=search], select, textarea {
+input[type=text], input[type=url], input[type=date], input[type=time], input[type=number], input[type=search], select, textarea {
   display: block; width: 100%; margin-top: 4px; padding: 10px 11px; font: inherit; font-size: 16px; color: var(--tx); background: var(--card); border: 1px solid var(--borda); border-radius: 9px; }
 textarea { resize: vertical; min-height: 44px; }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--azul2); outline-offset: 0; border-color: transparent; }

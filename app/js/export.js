@@ -119,13 +119,13 @@ const Export = (() => {
     const lista = [...S.fotos].sort((a, b) => a.num - b.num);
     if (lista.length) {
       const wf = wb.addWorksheet('FOTOS', { views: [{ state: 'frozen', ySplit: 2 }] });
-      wf.columns = [{ width: 7 }, { width: 18 }, { width: 30 }, { width: 38 }, { width: 34 }, { width: 17 }, { width: fotos ? 44 : 4 }];
+      wf.columns = [{ width: 7 }, { width: 18 }, { width: 30 }, { width: 38 }, { width: 34 }, { width: 17 }, { width: fotos ? 44 : 4 }, { width: 16 }];
       wf.mergeCells('A1:G1');
       wf.getCell('A1').value = 'REGISTRO FOTOGRÁFICO — numeração única JFAP_L<estação>_F<foto>';
       wf.getCell('A1').font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
       wf.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } };
       const cab = wf.getRow(2);
-      ['Nº', 'Arquivo', 'Estação', 'Item vinculado', 'Legenda', 'Data/hora', fotos ? 'Foto' : ''].forEach((t, i) => { const c = cab.getCell(i + 1); c.value = t; c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }; });
+      ['Nº', 'Arquivo', 'Estação', 'Item vinculado', 'Legenda', 'Data/hora', fotos ? 'Foto' : '', lista.some(f => f.url) ? 'Link' : ''].forEach((t, i) => { const c = cab.getCell(i + 1); c.value = t; c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }; });
       for (let i = 0; i < lista.length; i++) {
         const f = lista[i]; const r = i + 3;
         if (fotos) prog(`Inserindo foto ${i + 1} de ${lista.length}…`);
@@ -133,6 +133,7 @@ const Export = (() => {
         const row = wf.getRow(r);
         row.values = [String(f.num).padStart(3, '0'), f.id, `${String(f.estacao).padStart(2, '0')} — ${e.ambiente}`, nomeItem(f.estacao, f.chave), f.legenda || '', dataHoraBR(f.ts)];
         row.alignment = { vertical: 'top', wrapText: true };
+        if (f.url) row.getCell(8).value = { text: 'Abrir no Drive', hyperlink: f.url };
         if (fotos) {
           const red = await Fotos.reduzir(f.blob, 720, 0.72);
           const b64 = await Fotos.blobParaDataURL(red);
@@ -463,5 +464,62 @@ const Export = (() => {
     return { campos, estacoes: [...tocadas].sort((a, b) => a - b) };
   }
 
-  return { xlsx, gerarXlsx, zipFotos, backup, restaurar, pacote, relatorio, importarXlsx };
+  /* ------------------------------------------------------------ Consolidar equipe (Google Drive) */
+  function temConteudo(s) {
+    if (!s) return false;
+    if (Object.values(s.r || {}).some(v => v && (v.a || v.s || (v.obs || '').trim()))) return true;
+    if ((s.anot || '').trim()) return true;
+    const f = s.fech || {};
+    return !!(f.obs || f.pend || f.verP || f.verV || f.assin);
+  }
+
+  async function consolidar({ prog = () => {} } = {}) {
+    const { S, EST, porNum } = A();
+    prog('Buscando dados da equipe no Google Drive…');
+    const r = await Nuvem.equipe();
+    const membros = (r.equipe || []).filter(m => m.dados && Array.isArray(m.dados.estacoes)).sort((a, b) => a.vistoriador - b.vistoriador);
+    if (!membros.length) throw new Error('nenhum vistoriador enviou dados ainda');
+
+    const est = {}; const origem = {}; const conflitos = [];
+    for (const e of EST) {
+      const cands = membros.map(m => ({ m, s: m.dados.estacoes.find(x => x.num === e.num) })).filter(x => temConteudo(x.s));
+      if (!cands.length) continue;
+      cands.sort((a, b) => (b.s.upd || 0) - (a.s.upd || 0));
+      est[e.num] = JSON.parse(JSON.stringify(cands[0].s));
+      origem[e.num] = cands[0].m;
+      if (cands.length > 1) conflitos.push(`${String(e.num).padStart(2, '0')} (vistoriadores ${cands.map(c => c.m.vistoriador).join(', ')} — usada a versão mais recente, do ${cands[0].m.vistoriador})`);
+    }
+    // fotos: as de todos os vistoriadores (numeração por faixa não se repete); link do Drive quando houver
+    const fotos = [];
+    const vistos = new Set();
+    for (const m of membros) for (const f of m.dados.fotos || []) {
+      if (vistos.has(f.id) || !porNum[f.estacao]) continue;
+      vistos.add(f.id);
+      fotos.push(Object.assign({}, f, { url: (m.links || {})[f.id + '.jpg'] || f.url || '' }));
+    }
+
+    const nEst = Object.keys(est).length;
+    const guardEst = S.est, guardFotos = S.fotos;
+    let blob;
+    try {
+      Nuvem.pausar(true);
+      S.est = est; S.fotos = fotos;
+      blob = await gerarXlsx({ fotos: false, prog });
+    } finally {
+      S.est = guardEst; S.fotos = guardFotos;
+      Nuvem.pausar(false);
+    }
+    baixar(blob, `Vistoria_JFAP_CONSOLIDADA_${carimboData()}.xlsx`);
+    prog('Salvando cópia no Drive…');
+    let salvo = '';
+    try {
+      const b64 = (await Fotos.blobParaDataURL(blob)).split(',')[1];
+      await Nuvem.post({ acao: 'planilha', vistoriador: 'EQUIPE', nome: 'Vistoria_JFAP_CONSOLIDADA.xlsx', base64: b64 });
+      salvo = ' Cópia salva em Vistoria JFAP / Consolidado.';
+    } catch (err) { salvo = ' (não foi possível salvar a cópia no Drive: ' + err.message + ')'; }
+    const porV = membros.map(m => `V${m.vistoriador}: ${Object.values(origem).filter(o => o === m).length} estação(ões)`).join(' · ');
+    return `Consolidado ✔ — ${nEst} estação(ões), ${fotos.length} foto(s). ${porV}.${conflitos.length ? ' Atenção, estações preenchidas por mais de um vistoriador: ' + conflitos.join('; ') + '.' : ''}${salvo}`;
+  }
+
+  return { xlsx, gerarXlsx, zipFotos, backup, restaurar, pacote, relatorio, importarXlsx, consolidar };
 })();

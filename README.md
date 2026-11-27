@@ -47,6 +47,28 @@ alerta crítico prevalecendo sobre a média; média por parâmetro em todo o pr�
 
 Os dados ficam salvos **somente no dispositivo** (IndexedDB). Faça backups com frequência.
 
+## Equipe (até 4 vistoriadores) e envio para o Google Drive
+
+**Equipe.** Em *Mais → Configurações*, cada celular escolhe **Vistoriador 1, 2, 3 ou 4**. As fotos de cada um
+usam uma faixa própria de números (1: 001–499 · 2: 501–999 · 3: 1001–1499 · 4: 1501–1999), mantendo o
+padrão `JFAP_L<estação>_F<foto>` sem repetir números. As estações são divididas entre a equipe.
+
+**Envio periódico.** O salvamento no aparelho é imediato (cada toque é gravado na hora). A cópia para o
+Google Drive é feita a cada **10 minutos** (configurável: 5, 10, 15, 30 min ou só manual), apenas do que
+mudou, com o app aberto; sem internet, fica pendente para o ciclo seguinte. O indicador ☁ no topo mostra o
+último envio ou as pendências. Vai para `Meu Drive / Vistoria JFAP / Vistoriador N /`:
+fotos (`fotos/JFAP_Lxx_Fyyy.jpg`), respostas (`dados.json`) e a planilha do vistoriador (ao concluir uma
+estação e em “Enviar agora”).
+
+**Configuração (uma vez).** O responsável publica o recebedor `app/nuvem/Codigo.gs` como *App da Web*
+do Google Apps Script na conta que guardará os arquivos e passa a URL e o código da equipe aos
+vistoriadores. O passo a passo, com botão para copiar o código, está no app em *Mais → Configurar o
+Google Drive*. Não é preciso cadastro no Google Cloud nem login dos vistoriadores.
+
+**Consolidar.** *Exportar → Consolidar equipe* junta as respostas dos 4 vistoriadores numa planilha
+única (com links das fotos no Drive), baixa o arquivo e salva uma cópia em `Vistoria JFAP / Consolidado`.
+Se uma estação tiver sido preenchida por mais de um vistoriador, vale a versão mais recente e o app avisa.
+
 ## Importar respostas de uma planilha
 
 Em **Exportar → Importar respostas de uma planilha**, escolha um .xlsx de vistoria (por exemplo, uma
@@ -81,6 +103,8 @@ app/
   js/fotos.js    captura, carimbo e miniaturas
   js/export.js   Excel, PDF, ZIP e backup
   js/db.js       armazenamento local (IndexedDB)
+  js/nuvem.js    envio periódico para o Google Drive
+  nuvem/Codigo.gs  recebedor no Google Apps Script (publicado pelo responsável)
   modelo/        planilha de vistoria sem respostas (modelo da exportação)
   vendor/        ExcelJS 4.4.0 e JSZip 3.10.1 (MIT)
 tools/extrair_planilha.py   regenera js/data.js a partir da planilha

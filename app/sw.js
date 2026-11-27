@@ -1,8 +1,8 @@
 /* Service worker: mantém o aplicativo disponível sem internet (cache do app). */
-const VERSAO = 'vistoria-jfap-v2';
+const VERSAO = 'vistoria-jfap-v3';
 const ARQUIVOS = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest',
-  'js/data.js', 'js/db.js', 'js/calc.js', 'js/fotos.js', 'js/app.js', 'js/export.js',
+  'js/data.js', 'js/db.js', 'js/calc.js', 'js/fotos.js', 'js/app.js', 'js/export.js', 'js/nuvem.js',
   'vendor/exceljs.min.js', 'vendor/jszip.min.js',
   'modelo/modelo_vistoria_JFAP.xlsx',
   'icons/icon-192.png', 'icons/icon-512.png'
